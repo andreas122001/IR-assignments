@@ -168,9 +168,11 @@ if __name__=="__main__":
             corpus.append(f.read())
 
     indexer = CustomIndexer(corpus)
-    results = indexer.search("(claims of duty)")
+    query = input("Query: ")
+
+    results = indexer.search(query)
     if results:
         for doc, score in results.items():
-            print(f"ID: {doc}, Score: {score}, Content: {indexer.corpus[doc][:100]}")
+            print(f"ID: {doc}, Score: {score:.4f}, Content: {indexer.corpus[doc][:100]}")
     else:
         print("No results")
