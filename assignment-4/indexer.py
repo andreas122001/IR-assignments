@@ -142,14 +142,13 @@ class CustomIndexer:
         return doc_set
     
     def rank_docs(self, docs, query):
-        # query = query.split(" ")
-        # query = filter(lambda x: x.upper() not in ["AND", "OR", "NOT"], query)
         # Generate vocabulary of all retrieved documents
         vocab = set(" ".join([self.preprocessed_corpus[doc] for doc in docs]).split(" "))
 
         # Remove terms that are not in vocabulary from query
         query = self.preprocessing(query).split(" ")
         query = list(filter(lambda x: x in vocab, query))
+        # Remove operators so they don't influence rank
         query = list(filter(lambda x: x not in ['and', 'or', 'not'], query))
 
         # Calculate TF-IDF
@@ -158,10 +157,17 @@ class CustomIndexer:
         idfs = np.log2(len(self.corpus) / dfs)
         tf_idf = np.sum(tfs*idfs, axis=1)
 
-        doc_scores = {doc: score for doc, score in zip(docs, tf_idf)}
-        doc_scores = dict(sorted(doc_scores.items(), key=lambda x: x[1])[::-1])
+        # Gather results and sort by score
+        result = []
+        for doc, score in zip(docs, tf_idf):
+            result.append({
+                'id': doc,
+                'score': score,
+                'content': self.corpus[doc]
+            })
+        result = sorted(result, key=lambda x: x['score'])[::-1]
 
-        return doc_scores
+        return result
 
     def search(self, query):
         parsed_query = self.parser.parse_query(query)
@@ -185,8 +191,8 @@ if __name__=="__main__":
 
         results = indexer.search(query)
         if results:
-            for doc, score in results.items():
-                print(f"ID: {doc}, Score: {score:.4f}, Content: {indexer.corpus[doc][:100]}")
+            for res in results:
+                print(f"ID: {res['id']}, Score: {res['score']:.4f}, Content: {res['content'][:100]}")
         else:
             print("No results")
         print()
