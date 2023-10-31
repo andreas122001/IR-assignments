@@ -1,6 +1,30 @@
 import numpy as np
 from nltk.stem.porter import PorterStemmer
 import string
+import re
+
+class Parser:
+    def parse_query(self, query):
+        # Tokenize the query
+        query = query.replace(" -", " NOT ")
+        tokens = re.findall(r'(?:AND|OR|NOT|\(|\)|[a-zA-Z0-9]+)', query)
+        return self.__parse_expression(tokens)
+
+    def __parse_expression(self, tokens):
+        current_expression = []
+
+        while tokens:
+            token = tokens.pop(0)
+            if token == "(":
+                # Start a new nested expression
+                nested_expression = self.__parse_expression(tokens)
+                current_expression.append(nested_expression)
+            elif token == ")":
+                # End the current expression
+                break
+            else:
+                current_expression.append(token)
+        return current_expression
 
 
 class CustomIndexer:
@@ -8,19 +32,7 @@ class CustomIndexer:
         self.original_corpus = corpus
         self.preprocessed_corpus = [self.preprocessing(doc) for doc in corpus]
         self.index = self.gen_idx_block(self.preprocessed_corpus)
-
-    def search(self, query):
-        query = self.preprocessing(query)
-        all_docs = {}
-        for q in self.preprocessing(query).split(" "):
-            if q in self.index:
-                all_docs[q] = self.index[q]        
-        all_docs = list([list(val.keys()) for val in all_docs.values()])
-        docs = []
-        for doc in all_docs[0]:
-            if all([doc in temp for temp in all_docs]):
-                docs.append(doc)
-        return docs
+        self.parser = Parser()
         
 
     def blockify(self, corpus, block_size=3):
@@ -72,17 +84,57 @@ class CustomIndexer:
                 indexes.append(self.index[term])
         return indexes
     
-    def get_docs_by_union(terms):
-        # Get the indexes of the NOT terms
-        indexes = retrieve_raw_indexes(terms)
-        if not len(indexes):
-            return []
-        # Accumulate docs of the NOT terms
-        docs = set()
-        for index in indexes:
-            docs.update(index.keys())
-        return list(docs)
+    def retrieve_docs(self, term):
+        term = self.preprocessing(term)
+        if term in self.index:
+            return set(self.index[term].keys())
+        return set()
+    
+    def search_recursive(self, query, doc_set:set=set()):
+        current_context = set()
+        operator = None
 
+        for term in query:
+            if isinstance(term, list):
+                # Recursively process sub-expression
+                sub_result = self.search_recursive(term, doc_set)
+                if operator == 'AND':
+                    doc_set.intersection_update(sub_result)
+                elif operator == 'NOT':
+                    doc_set.difference_update(sub_result)
+                else: # default OR
+                    doc_set.update(sub_result)
+            elif term in {'AND', 'OR', 'NOT', '-'}:
+                # Set the current operator
+                operator = term
+            else:
+                # Process term
+                term_docs = self.retrieve_docs(term)  # Replace with your actual retrieval function
+                if operator == 'AND':
+                    if not current_context:
+                        current_context = term_docs
+                    else:
+                        current_context.intersection_update(term_docs)
+                elif operator == 'OR':
+                    current_context.update(term_docs)
+                elif operator == 'NOT':
+                    current_context.difference_update(term_docs)
+                else:
+                    current_context.update(term_docs)
+        
+        # After processing all terms and operators in the query, update the document set
+        doc_set.update(current_context)
+        
+        return doc_set
+    
+    def rank_docs(self, docs):
+        return docs
+
+    def search(self, query):
+        parsed_query = self.parser.parse_query(query)
+        parsed_results = list(self.search_recursive(parsed_query))
+        ranked_results = list(self.rank_docs(parsed_results)) # TODO: Rank results
+        return ranked_results
 
 corpus = []
 for i in range(1,7):
@@ -90,4 +142,4 @@ for i in range(1,7):
         corpus.append(f.read())
 
 indexer = CustomIndexer(corpus)
-print(indexer.search("enjoy"))
+print(indexer.search("(enjoy AND bear)"))
