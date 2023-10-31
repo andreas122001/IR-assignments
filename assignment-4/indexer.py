@@ -144,7 +144,7 @@ class CustomIndexer:
         # Calculate TF-IDF
         tfs = np.array([[(self.index[term][doc] if doc in self.index[term] else 0) for term in query] for doc in docs])
         dfs = np.array([len(self.index[term]) for term in query])
-        idfs = np.log2(len(corpus) / dfs)
+        idfs = np.log2(len(self.corpus) / dfs)
         tf_idf = np.sum(tfs*idfs, axis=1)
 
         doc_scores = {doc: score for doc, score in zip(docs, tf_idf)}
