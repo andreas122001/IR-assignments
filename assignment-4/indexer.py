@@ -2,6 +2,7 @@ import numpy as np
 from nltk.stem.porter import PorterStemmer
 import string
 import re
+import codecs
 
 class Parser:
     def parse_query(self, query):
@@ -26,9 +27,18 @@ class Parser:
                 current_expression.append(token)
         return current_expression
 
+def read_stopwords():
+    common_words = []
+    try:
+        with codecs.open("common-english-words.txt", "r", "utf-8") as f:
+            common_words = f.read().split(",")
+    except:
+        print("Could not read stopwords, continuing without.")
+    return common_words
 
 class CustomIndexer:
     def __init__(self, corpus) -> None:
+        self.stopwords = read_stopwords()
         self.corpus = corpus
         self.preprocessed_corpus = [self.preprocessing(doc) for doc in corpus]
         self.index = self.gen_idx(self.preprocessed_corpus)
@@ -84,17 +94,18 @@ class CustomIndexer:
         new_text = "".join(list(filter(lambda x: x not in bad_chars, new_text))) # remove unwanted chars
         new_text = new_text.split(" ") # tokenize (split into words)
         new_text = list(filter(lambda c: len(c) > 0, new_text)) # remove empty strings
+        new_text = list(filter(lambda c: c not in self.stopwords, new_text)) # remove empty strings
         new_text = [stemmer.stem(word) for word in new_text] # perform stemming
         new_text = " ".join(new_text)
         return new_text
         
-    def retrieve_docs(self, term):
+    def __retrieve_docs(self, term):
         term = self.preprocessing(term)
         if term in self.index:
             return set(self.index[term].keys())
         return set()
     
-    def filter_recursive(self, query, doc_set:set=set()):
+    def filter_recursive(self, query, doc_set:set):
         current_context = set()
         operator = None
 
@@ -113,7 +124,7 @@ class CustomIndexer:
                 operator = term
             else:
                 # Process term
-                term_docs = self.retrieve_docs(term)  # Replace with your actual retrieval function
+                term_docs = self.__retrieve_docs(term)  # Replace with your actual retrieval function
                 if operator == 'AND':
                     if not current_context:
                         current_context = term_docs
@@ -154,7 +165,7 @@ class CustomIndexer:
 
     def search(self, query):
         parsed_query = self.parser.parse_query(query)
-        filtered_results = list(self.filter_recursive(parsed_query))
+        filtered_results = list(self.filter_recursive(parsed_query, set()))
         if not filtered_results:
             return None
         ranked_results = self.rank_docs(filtered_results, query)
@@ -168,11 +179,14 @@ if __name__=="__main__":
             corpus.append(f.read())
 
     indexer = CustomIndexer(corpus)
-    query = input("Query: ")
+    query = "0"
+    while query:
+        query = input("Query: ")
 
-    results = indexer.search(query)
-    if results:
-        for doc, score in results.items():
-            print(f"ID: {doc}, Score: {score:.4f}, Content: {indexer.corpus[doc][:100]}")
-    else:
-        print("No results")
+        results = indexer.search(query)
+        if results:
+            for doc, score in results.items():
+                print(f"ID: {doc}, Score: {score:.4f}, Content: {indexer.corpus[doc][:100]}")
+        else:
+            print("No results")
+        print()
