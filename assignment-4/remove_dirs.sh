@@ -1,4 +1,6 @@
 #!/bin/bash
+# Removes the weirdly named directories so that Windows can use them.
+
 CHUNK_DIR="./chunks"  # not used
 NUM_CORES=1   # Change this to the number of CPU cores you want to utilize
 
