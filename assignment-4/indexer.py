@@ -3,6 +3,7 @@ from nltk.stem.porter import PorterStemmer
 import string
 import re
 import codecs
+from tqdm import tqdm
 
 class Parser:
     def parse_query(self, query):
@@ -40,7 +41,7 @@ class CustomIndexer:
     def __init__(self, corpus) -> None:
         self.stopwords = read_stopwords()
         self.corpus = corpus
-        self.preprocessed_corpus = [self.preprocessing(doc) for doc in corpus]
+        self.preprocessed_corpus = [self.preprocessing(doc) for doc in tqdm(corpus)]
         self.index = self.gen_idx(self.preprocessed_corpus)
         self.parser = Parser()
         
@@ -53,7 +54,7 @@ class CustomIndexer:
     def gen_idx(self, corpus):
         # Initiate the index as a dict('term', dict('doc', num_occ))
         idx_list = dict([(key, {}) for key in set(" ".join(corpus).split(" "))])
-        for doc_idx, doc in enumerate(corpus, 0):
+        for doc_idx, doc in enumerate(tqdm(corpus), 0):
             # Increment number of occurrences for each occurrence
             for term in doc.split(" "):
                 if doc_idx not in idx_list[term].keys():
@@ -65,7 +66,7 @@ class CustomIndexer:
         # Initiate the index as a dict('term', dict('doc', [block_ids]))
         idx_list = dict([(key, {}) for key in set(" ".join(corpus).split(" "))])
         corpus_blocks = []
-        for doc_idx, doc in enumerate(corpus, 0):
+        for doc_idx, doc in enumerate(tqdm(corpus), 0):
             # Generate blocks
             blocks = [doc.split(" ")[block_size*i:block_size*i+block_size] for i in range(len(doc.split(" "))//block_size+1)]
             blocks = list(filter(lambda x: len(x)>0, blocks))
@@ -105,35 +106,38 @@ class CustomIndexer:
             return set(self.index[term].keys())
         return set()
     
-    def filter_recursive(self, query, doc_set:set):
+    def filter_recursive(self, query):
         current_context = set()
         operator = None
+        doc_set = set()
 
         for term in query:
             if isinstance(term, list):
                 # Recursively process sub-expression
-                sub_result = self.filter_recursive(term, doc_set)
-                if operator == 'AND':
-                    doc_set.intersection_update(sub_result)
-                elif operator == 'NOT':
-                    doc_set.difference_update(sub_result)
-                else: # default OR
-                    doc_set.update(sub_result)
+                sub_result = self.filter_recursive(term)
+                if operator:
+                    if operator == 'AND':
+                        current_context.intersection_update(sub_result)
+                    elif operator == 'NOT':
+                        current_context.difference_update(sub_result)
+                    else: # default OR
+                        current_context.update(sub_result)
+                else:
+                    current_context.update(sub_result)
             elif term in {'AND', 'OR', 'NOT', '-'}:
                 # Set the current operator
                 operator = term
             else:
                 # Process term
                 term_docs = self.__retrieve_docs(term)  # Replace with your actual retrieval function
-                if operator == 'AND':
-                    if not current_context:
-                        current_context = term_docs
-                    else:
+                if operator:
+                    if operator == 'AND':
                         current_context.intersection_update(term_docs)
-                elif operator == 'OR':
-                    current_context.update(term_docs)
-                elif operator == 'NOT':
-                    current_context.difference_update(term_docs)
+                    elif operator == 'OR':
+                        current_context.update(term_docs)
+                    elif operator == 'NOT':
+                        current_context.difference_update(term_docs)
+                    operator = None
                 else:
                     current_context.update(term_docs)
         
@@ -171,13 +175,13 @@ class CustomIndexer:
 
     def search(self, query):
         parsed_query = self.parser.parse_query(query)
-        filtered_results = list(self.filter_recursive(parsed_query, set()))
+        filtered_results = list(self.filter_recursive(parsed_query))
         if not filtered_results:
             return None
         ranked_results = self.rank_docs(filtered_results, query)
         return ranked_results
 
-
+# E.g.: fox AND brown AND lazy OR (claim -morning)
 if __name__=="__main__":
     corpus = []
     for i in range(1,7):
